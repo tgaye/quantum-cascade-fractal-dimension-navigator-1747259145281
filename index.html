@@ -1,0 +1,550 @@
+<!DOCTYPE html><html><head><meta charset="UTF-8">
+    <meta nameviewport"="" content="width=device-width, initial-scale=1.0">
+    <title>Quantum Cascade: Fractal Dimension Navigator</title>
+    <script src="https://cdn.jsdelivr.net/npm/p5@1.8.0/lib/p5.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #000;
+            font-family: 'Orbitron', 'Segoe UI', sans-serif;
+        }
+        #controls {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            color: #fff;
+            padding: 15px;
+            border-radius: 5px;
+            border: 1px solid #3a3a3a;
+            max-width: 300px;
+            z-index: 100;
+        }
+        #controls h3 {
+            margin-top: 0;
+            color: #0af;
+            border-bottom: 1px solid #333;
+            padding-bottom: 5px;
+        }
+        .control-group {
+            margin-bottom: 10px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #ccc;
+            font-size: 12px;
+        }
+        input[type="range"] {
+            width: 100%;
+        }
+        #toggleControls {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            color: #fff;
+            border: 1px solid #3a3a3a;
+            padding: 8px 15px;
+            border-radius: 20px;
+            cursor: pointer;
+            z-index: 100;
+        }
+        #audioInput {
+            width: 100%;
+            margin-top: 10px;
+        }
+        #status {
+            font-size: 11px;
+            color: #888;
+            margin-top: 10px;
+        }
+    </style>
+
+<base target="_self">
+    </head><body><div id="startButton" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0, 10, 30, 0.9); color: #0af; padding: 20px 40px; border-radius: 5px; font-size: 16px; cursor: pointer; z-index: 9999; text-align: center; box-shadow: 0 0 20px rgba(0, 170, 255, 0.5);">
+        <h2 style="margin-top: 0;">Quantum Cascade</h2>
+        <p>Click to Start Experience</p>
+    </div>
+
+
+    <div id="controls">
+        <h3>FRACTAL CONTROLS</h3>
+        <div class="control-group">
+            <label for="fractalDetail">Fractal Detail</label>
+            <input type="range" id="fractalDetail" min="1" max="10" value="5" step="1">
+        </div>
+        <div class="control-group">
+            <label for="colorScheme">Color Scheme</label>
+            <input type="range" id="colorScheme" min="0" max="3" value="0" step="1">
+        </div>
+        <div class="control-group">
+            <label for="rotationSpeed">Rotation Speed</label>
+            <input type="range" id="rotationSpeed" min="-2" max="2" value="0.5" step="0.1">
+        </div>
+        <div class="control-group">
+            <label for="audioSensitivity">Audio Sensitivity</label>
+            <input type="range" id="audioSensitivity" min="0" max="200" value="100" step="1">
+        </div>
+        <div class="control-group">
+            <label for="audioInput">Audio Source</label>
+            <input type="file" id="audioInput" accept="audio/*">
+        </div>
+        <div id="status">Loading quantum fractal engine...</div>
+    </div>
+    <button id="toggleControls">Toggle Controls</button>
+
+    <script>
+        const sketch = (p) => {
+            let audioContext;
+            let audioSource;
+            let analyser;
+            let audioData;
+            let fftSize = 2048;
+            let bufferLength;
+            let isPlaying = false;
+            let currentAudioFile;
+            let audioElement;
+            
+            // Fractal parameters
+            let fractalDetail = 5;
+            let colorScheme = 0;
+            let rotationSpeed = 0.5;
+            let audioSensitivity = 100;
+            
+            // Performance monitoring
+            let lastFrameTime = 0;
+            let frameTimes = [];
+            let qualityLevel = 1;
+            let maxParticles = 1500;
+            
+            // Color palettes
+            const palettes = [
+                ['#0af', '#f0a', '#af0', '#0fa'],
+                ['#ff3366', '#66ff33', '#3366ff', '#ff33cc'],
+                ['#00ffff', '#ff00ff', '#ffff00', '#ffffff'],
+                ['#1a1a2e', '#16213e', '#0f3460', '#e94560']
+            ];
+            
+            // Particle system
+            let particles = [];
+            class Particle {
+                constructor() {
+                    this.reset();
+                    this.life = p.random(100, 200);
+                    this.maxLife = this.life;
+                }
+                
+                reset() {
+                    this.pos = p.createVector(p.random(-1, 1), p.random(-1, 1), p.random(-1, 1)).mult(500);
+                    this.vel = p.createVector(0, 0, 0);
+                    this.acc = p.createVector(0, 0, 0);
+                    this.size = p.random(1, 3);
+                    this.color = p.color(p.random(255), p.random(255), p.random(255), 150);
+                    this.angle = p.random(p.TWO_PI);
+                    this.angleVel = p.random(-0.01, 0.01);
+                    this.life = p.random(100, 200);
+                    this.maxLife = this.life;
+                }
+                
+                update(audioData) {
+                    if (!audioData) return;
+                    
+                    // Audio reactivity
+                    const audioIndex = p.floor(p.map(this.pos.z, -500, 500, 0, bufferLength/4));
+                    const audioValue = audioData[audioIndex] / 255;
+                    
+                    // Apply forces based on audio
+                    const force = p.createVector(
+                        p.sin(this.angle) * audioValue * audioSensitivity/50,
+                        p.cos(this.angle) * audioValue * audioSensitivity/50,
+                        p.sin(this.angle + p.cos(this.angle)) * audioValue * audioSensitivity/100
+                    );
+                    
+                    this.acc.add(force);
+                    this.vel.add(this.acc);
+                    this.vel.limit(5);
+                    this.pos.add(this.vel);
+                    this.acc.mult(0);
+                    this.angle += this.angleVel;
+                    
+                    this.life--;
+                    if (this.life <= 0 || this.pos.dist(p.createVector(0, 0, 0)) > 800) {
+                        this.reset();
+                    }
+                }
+                
+                display() {
+                    const lifeRatio = this.life / this.maxLife;
+                    p.push();
+                    p.translate(this.pos.x, this.pos.y, this.pos.z);
+                    
+                    // Choose color based on scheme
+                    let col;
+                    if (colorScheme === 0) {
+                        col = p.color(
+                            p.map(this.pos.x, -500, 500, 0, 255),
+                            p.map(this.pos.y, -500, 500, 0, 255),
+                            p.map(this.pos.z, -500, 500, 0, 255),
+                            lifeRatio * 200
+                        );
+                    } else {
+                        const palette = palettes[colorScheme];
+                        const colIndex = p.floor(p.map(this.pos.z, -500, 500, 0, palette.length));
+                        col = p.color(palette[colIndex]);
+                        p.colorMode(p.RGB);
+                        p.alpha(col, lifeRatio * 200);
+                    }
+                    
+                    p.fill(col);
+                    p.noStroke();
+                    p.sphere(this.size * lifeRatio);
+                    p.pop();
+                }
+            }
+            
+            // Also modify the preload function to ensure audio context is created properly:
+            p.preload = function() {
+                // Initialize audio context with error handling
+                try {
+                    // Use newer syntax for better browser support
+                    window.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    audioContext = window.audioContext;
+                    
+                    // Create analyzer with lower FFT size for better performance
+                    analyser = audioContext.createAnalyser();
+                    analyser.fftSize = 512; // Smaller than original 2048
+                    bufferLength = analyser.frequencyBinCount;
+                    audioData = new Uint8Array(bufferLength);
+                    
+                    console.log("Audio context created successfully");
+                } catch (e) {
+                    console.error("AudioContext failed to initialize:", e);
+                    // Create mock audio data for visualization without audio
+                    bufferLength = 256;
+                    audioData = new Uint8Array(bufferLength);
+                }
+            };
+            
+            // Add this helper function for audio visualization without actual audio
+            function updateMockAudioData() {
+                if (!isPlaying || !audioData) return;
+                
+                // Create animated fake audio data
+                for (let i = 0; i < bufferLength; i++) {
+                    const value = 128 + 
+                                64 * Math.sin(p.frameCount * 0.02 + i * 0.1) + 
+                                32 * Math.sin(p.frameCount * 0.01 + i * 0.05);
+                    audioData[i] = Math.max(0, Math.min(255, value));
+                }
+            }
+            
+
+            p.setup = function() {
+                // Create canvas with WEBGL renderer
+                const canvas = p.createCanvas(p.windowWidth, p.windowHeight, p.WEBGL);
+                canvas.elt.style.display = 'block';
+                
+                // Initialize particles
+                for (let i = 0; i < maxParticles; i++) {
+                    particles.push(new Particle());
+                }
+                
+                // Setup UI controls
+                p.select('#fractalDetail').input(function() {
+                    fractalDetail = parseInt(this.value());
+                });
+                
+                p.select('#colorScheme').input(function() {
+                    colorScheme = parseInt(this.value());
+                });
+                
+                p.select('#rotationSpeed').input(function() {
+                    rotationSpeed = parseFloat(this.value());
+                });
+                
+                p.select('#audioSensitivity').input(function() {
+                    audioSensitivity = parseInt(this.value());
+                });
+                
+                p.select('#audioInput').input(function(e) {
+                    handleFileUpload(e.target.files[0]);
+                });
+                
+                p.select('#toggleControls').mouseClicked(function() {
+                    const controls = p.select('#controls');
+                    const currentDisplay = controls.style('display');
+                    controls.style('display', currentDisplay === 'none' ? 'block' : 'none');
+                    localStorage.setItem('controlsVisible', currentDisplay !== 'none');
+                });
+                
+                // Restore controls visibility from localStorage
+                const controlsVisible = localStorage.getItem('controlsVisible') !== 'false';
+                p.select('#controls').style('display', controlsVisible ? 'block' : 'none');
+                
+                p.select('#status').html('Ready for quantum exploration');
+            };
+            
+            document.getElementById('startButton').addEventListener('click', function() {
+        this.style.display = 'none';
+        // Resume AudioContext if it exists
+        if (window.audioContext) {
+            audioContext.resume();
+        }
+    });
+
+    // Replace the existing handleFileUpload function with this improved version:
+    function handleFileUpload(file) {
+        if (!file) return;
+        
+        p.select('#status').html('Processing audio file...');
+        
+        // Clean up previous audio resources
+        if (audioSource) {
+            audioSource.disconnect();
+        }
+        if (audioElement) {
+            audioElement.pause();
+            audioElement.remove();
+        }
+        
+        currentAudioFile = file;
+        
+        // Create new audio element
+        audioElement = document.createElement('audio');
+        document.body.appendChild(audioElement); // Add to DOM for better browser support
+        audioElement.style.display = 'none';
+        
+        // Set up audio element
+        audioElement.controls = false;
+        audioElement.loop = true;
+        
+        // For debugging - add visible controls
+        const debugAudio = document.createElement('div');
+        debugAudio.style.position = 'fixed';
+        debugAudio.style.bottom = '10px';
+        debugAudio.style.left = '10px';
+        debugAudio.style.zIndex = '1000';
+        debugAudio.innerHTML = `
+            <p style="color: white; font-size: 12px; margin: 0 0 5px 0;">Audio Debug Controls:</p>
+            <button id="playDebug" style="margin-right: 5px;">Play</button>
+            <button id="pauseDebug" style="margin-right: 5px;">Pause</button>
+            <span id="audioStatus" style="color: white; font-size: 12px;">Stopped</span>
+        `;
+        document.body.appendChild(debugAudio);
+        
+        document.getElementById('playDebug').addEventListener('click', function() {
+            audioElement.play();
+            document.getElementById('audioStatus').textContent = 'Playing';
+        });
+        
+        document.getElementById('pauseDebug').addEventListener('click', function() {
+            audioElement.pause();
+            document.getElementById('audioStatus').textContent = 'Paused';
+        });
+        
+        // Create object URL from file
+        audioElement.src = URL.createObjectURL(file);
+        
+        // Wait for metadata to load
+        audioElement.addEventListener('loadedmetadata', function() {
+            p.select('#status').html('Audio loaded, click to play');
+            
+            // Make sure AudioContext is running
+            if (audioContext.state === 'suspended') {
+                audioContext.resume();
+            }
+            
+            // Set up audio processing chain
+            try {
+                // For MP4 files, use MediaElementAudioSourceNode
+                audioSource = audioContext.createMediaElementSource(audioElement);
+                audioSource.connect(analyser);
+                analyser.connect(audioContext.destination);
+                
+                // Try to play immediately
+                audioElement.play()
+                    .then(() => {
+                        isPlaying = true;
+                        p.select('#status').html('Playing: ' + currentAudioFile.name);
+                        document.getElementById('audioStatus').textContent = 'Playing';
+                    })
+                    .catch(err => {
+                        console.error("Playback failed:", err);
+                        p.select('#status').html('Click anywhere to play audio');
+                        
+                        // Add click event to entire document
+                        document.addEventListener('click', function playAudioOnClick() {
+                            audioElement.play()
+                                .then(() => {
+                                    isPlaying = true;
+                                    p.select('#status').html('Playing: ' + currentAudioFile.name);
+                                    document.getElementById('audioStatus').textContent = 'Playing';
+                                    document.removeEventListener('click', playAudioOnClick);
+                                })
+                                .catch(e => console.error("Play on click failed:", e));
+                        });
+                    });
+            } catch (e) {
+                console.error("Audio processing error:", e);
+                p.select('#status').html('Audio error: ' + e.message);
+            }
+        });
+        
+        // Error handling
+        audioElement.addEventListener('error', function() {
+            p.select('#status').html('Error loading audio file. Try MP3 format instead.');
+            console.error("Audio error:", audioElement.error);
+        });
+    }
+            
+            p.draw = function() {
+                // Performance monitoring
+                const now = p.millis();
+                const deltaTime = now - lastFrameTime;
+                lastFrameTime = now;
+                
+                frameTimes.push(deltaTime);
+                if (frameTimes.length > 60) frameTimes.shift();
+                
+                const avgFrameTime = frameTimes.reduce((a, b) => a + b, 0) / frameTimes.length;
+                const currentFPS = 1000 / avgFrameTime;
+                
+                // Adaptive quality
+                if (currentFPS < 30 && qualityLevel > 0.5) {
+                    qualityLevel = p.max(0.5, qualityLevel - 0.1);
+                } else if (currentFPS > 50 && qualityLevel < 1) {
+                    qualityLevel = p.min(1, qualityLevel + 0.1);
+                }
+                
+                // Get audio data if available
+                if (analyser && isPlaying) {
+                    analyser.getByteFrequencyData(audioData);
+                }
+                
+                // Background with subtle gradient
+                p.background(0);
+                p.colorMode(p.RGB);
+                
+                // Lighting
+                p.ambientLight(60);
+                p.pointLight(255, 255, 255, p.mouseX - p.width/2, p.mouseY - p.height/2, 200);
+                
+                // Camera and perspective
+                p.camera(0, 0, 800 + p.sin(p.frameCount * 0.01) * 100, 0, 0, 0, 0, 1, 0);
+                p.perspective(p.PI/3, p.width/p.height, 0.1, 2000);
+                
+                // Rotation based on audio or mouse
+                let rotX = p.map(p.mouseY, 0, p.height, -p.PI/4, p.PI/4);
+                let rotY = p.map(p.mouseX, 0, p.width, -p.PI/4, p.PI/4);
+                
+                if (isPlaying && audioData) {
+                    const audioAvg = audioData.reduce((a, b) => a + b, 0) / bufferLength;
+                    rotY += p.map(audioAvg, 0, 255, -0.1, 0.1);
+                }
+                
+                p.rotateX(rotX);
+                p.rotateY(rotY + p.frameCount * rotationSpeed * 0.01);
+                
+                // Draw particles
+                const particlesToDraw = p.floor(maxParticles * qualityLevel);
+                for (let i = 0; i < particlesToDraw; i++) {
+                    particles[i].update(audioData);
+                    particles[i].display();
+                }
+                
+                // Draw fractal centerpiece
+                drawFractalCore();
+                
+                // Display FPS
+                if (qualityLevel < 0.9) {
+                    p.push();
+                    p.fill(255, 0, 0);
+                    p.noStroke();
+                    p.textSize(16);
+                    p.textAlign(p.LEFT, p.TOP);
+                    p.text(`PERF: ${p.floor(currentFPS)} FPS (${p.floor(qualityLevel*100)}%)`, -p.width/2 + 20, -p.height/2 + 20);
+                    p.pop();
+                }
+            };
+            
+            function drawFractalCore() {
+                p.push();
+                p.noFill();
+                p.stroke(255, 50);
+                p.strokeWeight(1);
+                
+                const iterations = p.floor(p.map(fractalDetail, 1, 10, 3, 8));
+                const size = 100 + p.sin(p.frameCount * 0.02) * 20;
+                
+                for (let i = 0; i < iterations; i++) {
+                    const ratio = i / iterations;
+                    const currentSize = size * (1 - ratio * 0.7);
+                    
+                    p.push();
+                    p.rotateX(p.frameCount * 0.005 * ratio);
+                    p.rotateY(p.frameCount * 0.007 * ratio);
+                    p.rotateZ(p.frameCount * 0.003 * ratio);
+                    
+                    if (audioData && isPlaying) {
+                        const audioIndex = p.floor(p.map(ratio, 0, 1, 0, bufferLength/2));
+                        const audioValue = audioData[audioIndex] / 255;
+                        p.stroke(
+                            p.map(audioValue, 0, 1, 100, 255),
+                            p.map(ratio, 0, 1, 100, 200),
+                            p.map(audioValue, 0, 1, 200, 100),
+                            150
+                        );
+                    } else {
+                        p.stroke(
+                            p.map(ratio, 0, 1, 100, 255),
+                            p.map(ratio, 0, 1, 100, 200),
+                            p.map(ratio, 0, 1, 200, 100),
+                            150
+                        );
+                    }
+                    
+                    p.box(currentSize);
+                    p.pop();
+                }
+                
+                p.pop();
+            }
+            
+            p.windowResized = function() {
+                p.resizeCanvas(p.windowWidth, p.windowHeight);
+            };
+            
+            p.mousePressed = function() {
+                if (!isPlaying && currentAudioFile) {
+                    audioContext.resume().then(() => {
+                        audioElement.play();
+                        isPlaying = true;
+                        p.select('#status').html('Playing: ' + currentAudioFile.name);
+                    });
+                }
+            };
+            
+            p.touchStarted = function() {
+                if (!isPlaying && currentAudioFile) {
+                    audioContext.resume().then(() => {
+                        audioElement.play();
+                        isPlaying = true;
+                        p.select('#status').html('Playing: ' + currentAudioFile.name);
+                    });
+                }
+                return false;
+            };
+        };
+        
+        new p5(sketch);
+    </script>
+
+              
+          
+                
+          
+              
+</body></html>
